@@ -1,0 +1,6 @@
+#  A Yaml file for re-tiling the Hector Catalogues
+
+# This date must be unique- it's for making the output folders where the tiles go
+date: 20230515
+
+completed_observing_runs: [20230417_20230430]

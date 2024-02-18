@@ -1,0 +1,114 @@
+from pathlib import Path
+import pandas as pd
+import numpy as np
+
+# Set up
+# The smaller Hector Survey fields
+hector_survey_regions_information = pd.read_csv(
+    "resources/RegionInformation/all_regions.csv", index_col="name"
+)
+region_names = hector_survey_regions_information.index.values
+master_regions_per_region_name = hector_survey_regions_information[
+    "master_region"
+].values
+master_regions = np.unique(master_regions_per_region_name)
+
+# Get just the cluster regions
+cluster_region_names = region_names[master_regions_per_region_name == "HectorClusters"]
+WAVES_S_region_names = region_names[master_regions_per_region_name == "WAVES_S"]
+WAVES_N_region_names = region_names[master_regions_per_region_name == "WAVES_N"]
+
+# The fields we will be observing
+fields = [
+    "H01",
+    "H03",
+    "A3391",
+    "A3395",
+    "A3667",
+    "A3716",
+    "A3376",
+    "G09",
+    "G12",
+    "G15",
+    "A0119",
+    "A151",
+]
+
+
+date = config["date"]
+# completed_observing_runs = config["completed_observing_runs"]
+
+
+# Wildcard Constraints
+wildcard_constraints:
+    master_region="|".join(master_regions),
+    region_names="|".join(fields),
+
+
+rule all:
+    input:
+        current_targets_catalogue_name=expand(
+            f"results/{date}/MasterRegionCatalogues/{{master_region}}/{{region_name}}/{{region_name}}_Hector_target_galaxies_observed_removed.csv",
+            zip,
+            master_region=master_regions_per_region_name,
+            region_name=region_names,
+        ),
+        all_tiling_complete=expand(
+            f"results/{date}/Tiling/{{master_region}}/{{region_name}}/{{region_name}}_tiling_complete.flag",
+            zip,
+            master_region=master_regions_per_region_name,
+            region_name=region_names,
+        ),
+
+
+# rule combine_completed_tiles:
+#     message:
+#         "Combining all tiles which have been completed"
+#     input:
+#         completed_tiles=expand(
+#             "resources/ObservedTiles/{completed_observing_runs}/{field}/{completed_tiles}.fld",
+#             zip,
+#             completed_observing_runs=completed_tiles.completed_observing_runs,
+#             completed_tiles=completed_tiles.completed_tiles,
+#             field=completed_tiles.field,
+#         ),
+#     output:
+#         observed_galaxy_catalogue=f"results/{date}/alread_observed_galaxies_catalogue.csv",
+#     script:
+#         "scripts/combine_all_observed_tiles.py"
+
+
+rule remove_galaxies_already_observed:
+    message:
+        "Removing galaxies already observed in the survey"
+    input:
+        region_tiling_catalogue="resources/MasterRegionCatalogues/{master_region}/{region_name}/{region_name}_Hector_target_galaxies.csv",
+        observed_galaxy_database="resources/HectorDB/hector.db",
+    output:
+        output_catalogue=f"results/{date}/MasterRegionCatalogues/{{master_region}}/{{region_name}}/{{region_name}}_Hector_target_galaxies_observed_removed.csv",
+    script:
+        "scripts/remove_observed_galaxies.py"
+
+
+rule tile_region:
+    message:
+        "Running the tiling for {wildcards.master_region} {wildcards.region_name}"
+    input:
+        config_file="resources/Tiling_config_files/{master_region}_TS_config.yaml",
+        region_target_catalogue=f"results/{date}/MasterRegionCatalogues/{{master_region}}/{{region_name}}/{{region_name}}_Hector_target_galaxies_observed_removed.csv",
+        region_guide_star_catalogue="resources/MasterRegionCatalogues/{master_region}/{region_name}/{region_name}_guide_stars.csv",
+        region_standard_star_catalogue="resources/MasterRegionCatalogues/{master_region}/{region_name}/{region_name}_standard_stars.csv",
+        observed_galaxy_database="resources/HectorDB/hector.db",
+    params:
+        output_filename_stem="{region_name}",
+        output_folder=f"results/{date}/Tiling/{{master_region}}/{{region_name}}/",
+    output:
+        tiling_folder=directory(
+            f"results/{date}/Tiling/{{master_region}}/{{region_name}}/Tiles"
+        ),
+        plots_folder=directory(
+            f"results/{date}/Tiling/{{master_region}}/{{region_name}}/Plots"
+        ),
+        tiling_complete_flag=f"results/{date}/Tiling/{{master_region}}/{{region_name}}/{{region_name}}_tiling_complete.flag",
+    script:
+        "scripts/tile_region.py"
